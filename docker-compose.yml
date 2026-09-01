@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mfg_postgres
+    environment:
+      POSTGRES_DB: manufacturing_db
+      POSTGRES_USER: mfg_user
+      POSTGRES_PASSWORD: mfg_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
