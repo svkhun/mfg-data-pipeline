@@ -18,19 +18,19 @@ An end-to-end data pipeline simulating IoT/PLC line telemetry from industrial ma
 |                                                                               |
 |   [Raw Telemetry Table]              [Master Table]                           |
 |   machine_telemetry                  downtime_reasons                         |
-+---------------------------------------+---------------------------------------+
-                                        |
-                   +--------------------+--------------------+
-                   |                                         |
-                   v (Extract & Transform)                   v (Extract & Transform)
-+---------------------------------------+   +-----------------------------------+
-|       Automated Batch ETL             |   |        SQL Data Mart Engine       |
-|       batch_etl.py (Idempotent Upsert)|   |        populate_datamart.sql      |
-+-------------------+-------------------+   +-----------------+-----------------+
++-------------------+-------------------+---------------------------------------+
                     |                                         |
-                    +--------------------+--------------------+
-                                         |
-                                         v (Load / Upsert)
+     (Real-time Poll/Stream)             +--------------------+--------------------+
+                    |                    |                                         |
+                    v                    v (Extract & Transform)                   v (Extract & Transform)
++---------------------------------------+   +-----------------------------------+   +-----------------------------------+
+|  Stateful Stream Monitor & Detector   |   |       Automated Batch ETL         |   |        SQL Data Mart Engine       |
+|  stream_monitor.py                    |   |  batch_etl.py (Idempotent Upsert) |   |        populate_datamart.sql      |
+|  - Data Quality Gate                  |   +-----------------+-----------------+   +-----------------+-----------------+
+|  - Breakdown & Defect Streak Alerts   |                     |                                       |
++---------------------------------------+                     +-------------------+-------------------+
+                                                                                  |
+                                                                                  v (Load / Upsert)
 +-------------------------------------------------------------------------------+
 |                             Data Mart & Analytics                             |
 |                                                                               |
@@ -44,6 +44,7 @@ An end-to-end data pipeline simulating IoT/PLC line telemetry from industrial ma
 ```
 
 * **Data Ingestion:** Event-driven telemetry stream simulator ([`simulator.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/simulator.py))
+* **Real-Time Stateful Stream Monitor:** Event listener with data quality gates, critical breakdown alerts, and consecutive quality spike detection ([`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py))
 * **Storage Layer:** PostgreSQL 15 deployed on Docker with volume persistence ([`docker-compose.yml`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/docker-compose.yml))
 * **Data Mart:** Aggregated hourly table calculating Availability, Performance, Quality, and OEE ([`create_datamart.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_datamart.sql))
 * **Automated Batch ETL:** Python-based idempotent Upsert pipeline with execution auditing ([`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py))
@@ -85,6 +86,12 @@ $$\text{OEE} = \text{Availability} \times \text{Performance} \times \text{Qualit
 - Developed [`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py) using SQLAlchemy to extract raw telemetry, calculate OEE metrics, and perform idempotent upserts into the Data Mart.
 - Created [`pipeline_execution_logs`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_logs_table.sql) table to maintain execution audits, tracking start/end times, durations, processed row counts, status (`SUCCESS` / `FAILED`), and error tracebacks.
 - Deployed periodic execution loop via [`scheduler.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/scheduler.py) using the Python `schedule` library to automate recurring batch cycles.
+
+### Week 3: Stateful Real-Time Stream Monitoring & Anomaly Detection
+- Built [`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py) for real-time stateful stream analytics and edge anomaly detection:
+  - **Data Quality Gate:** Rejects corrupted telemetry (e.g. invalid or non-positive cycle times).
+  - **Critical Breakdown Alerts:** Real-time flagging of Unplanned Downtime incidents with color-coded ANSI logging.
+  - **Stateful In-Memory Quality Spike Alerts:** Uses in-memory state tracking (`defaultdict`) per machine (`line_id + machine_id`) to detect consecutive defect spikes ($\ge 2$ consecutive defect events) and automatically resets upon recovering normal production.
 
 ---
 
@@ -132,30 +139,33 @@ Get-Content create_logs_table.sql | docker exec -i mfg_postgres psql -U mfg_user
 
 ### 4. Running the Pipeline Components
 
-#### Option A: Interactive / Development Mode
-
-1. **Start Telemetry Stream Simulator** (generates events every 2 seconds):
-   ```powershell
-   .\.venv\Scripts\python simulator.py
-   ```
-   *(Keep this running in Terminal 1; press `Ctrl+C` to stop)*
-
-2. **Trigger Batch ETL Pipeline Once**:
-   ```powershell
-   .\.venv\Scripts\python batch_etl.py
-   ```
-
-3. **View KPI Analytics & OEE Report**:
-   ```powershell
-   .\.venv\Scripts\python run_analysis.py
-   ```
-
-#### Option B: Automated Scheduled Orchestration
-
-Run the automated batch scheduler (runs immediately on start, then triggers every 1 minute):
+#### Terminal 1: Ingestion Simulator
+Start continuous telemetry streaming (generates events every 2 seconds):
 ```powershell
-# Run Scheduler in Terminal 2
+.\.venv\Scripts\python simulator.py
+```
+*(Press `Ctrl+C` to stop)*
+
+#### Terminal 2: Real-Time Stateful Stream Monitor & Anomaly Detector
+Monitor incoming events in real time with state tracking, quality gates, and streak alerts:
+```powershell
+.\.venv\Scripts\python stream_monitor.py
+```
+*(Press `Ctrl+C` to stop)*
+
+#### Terminal 3: Automated Batch ETL Scheduler
+Automate recurring 1-minute aggregation cycles with audit logging:
+```powershell
 .\.venv\Scripts\python scheduler.py
+```
+
+#### Terminal 4 (Ad-hoc): Manual Batch ETL & KPI Reports
+```powershell
+# Manually trigger one-time Batch ETL upsert
+.\.venv\Scripts\python batch_etl.py
+
+# Print multi-level OEE & Line benchmark report
+.\.venv\Scripts\python run_analysis.py
 ```
 
 ---
