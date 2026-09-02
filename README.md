@@ -4,7 +4,7 @@ An enterprise-grade, Lambda/Hybrid manufacturing data platform designed for real
 
 ---
 
-## 1. 🏗️ Executive Summary & Architecture Overview
+## 1.  Executive Summary & Architecture Overview
 
 The platform implements a **Hybrid / Lambda Architecture** tailored for high-throughput Industrial IoT (IIoT) and discrete manufacturing environments. It decouples high-velocity streaming ingestion from compute-heavy historical aggregations while delivering sub-second anomaly detection and near real-time operational visibility.
 
@@ -59,7 +59,7 @@ The platform implements a **Hybrid / Lambda Architecture** tailored for high-thr
 
 ---
 
-## 2. ⚙️ Tech Stack & Engineering Standards
+## 2.  Tech Stack & Engineering Standards
 
 ### Core Technologies
 * **Runtime & Language:** Python 3.11+
@@ -82,7 +82,7 @@ The platform implements a **Hybrid / Lambda Architecture** tailored for high-thr
 
 ---
 
-## 3. 📐 Schema Design & Metric Definitions
+## 3.  Schema Design & Metric Definitions
 
 ### Database Schema Overview
 
@@ -132,7 +132,7 @@ The platform implements a **Hybrid / Lambda Architecture** tailored for high-thr
 
 ---
 
-### 📊 OEE Mathematical Model
+###  OEE Mathematical Model
 
 Overall Equipment Effectiveness (OEE) evaluates manufacturing productivity through three distinct dimensions:
 
@@ -154,7 +154,7 @@ $$\text{OEE (\%)} = \frac{\text{Availability (\%)} \times \text{Performance (\%)
 
 ---
 
-## 🗓️ Key Milestones Completed (Weeks 1 - 4)
+##  Key Milestones Completed (Weeks 1 - 4)
 
 ### Week 1: Data Modeling & Synthetic PLC Telemetry Simulation
 * Designed schema architecture across raw telemetry and downtime master tables.
@@ -184,7 +184,7 @@ $$\text{OEE (\%)} = \frac{\text{Availability (\%)} \times \text{Performance (\%)
 
 ---
 
-## 🚀 Quick Start & Deployment Guide (Zero to Running)
+##  Quick Start & Deployment Guide (Zero to Running)
 
 ### 1. Multi-Container Deployment via Docker Compose
 
@@ -198,8 +198,8 @@ docker compose up --build -d
 docker compose ps
 ```
 
-* 🌐 **Real-Time Streamlit Dashboard:** Open browser at [http://localhost:8501](http://localhost:8501)
-* 🗄️ **PostgreSQL Port:** Exposed on `localhost:5432` (User: `mfg_user`, Database: `manufacturing_db`)
+*  **Real-Time Streamlit Dashboard:** Open browser at [http://localhost:8501](http://localhost:8501)
+*  **PostgreSQL Port:** Exposed on `localhost:5432` (User: `mfg_user`, Database: `manufacturing_db`)
 
 ---
 
@@ -300,4 +300,4 @@ docker compose down
 
 # Full reset: Wipe containers, network, and persistent storage volumes
 docker compose down -v
-```
+```
