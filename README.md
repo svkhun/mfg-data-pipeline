@@ -1,261 +1,303 @@
-# Real-Time & Batch Manufacturing Data Pipeline
+# End-to-End Industrial IoT & OEE Manufacturing Data Platform
 
-An end-to-end data pipeline simulating IoT/PLC line telemetry from industrial machines, persisting raw streaming events into PostgreSQL via Docker, aggregating hourly OEE Data Marts, and orchestrating automated batch ETL pipelines with audit logging.
+An enterprise-grade, Lambda/Hybrid manufacturing data platform designed for real-time edge telemetry ingestion, automated batch OEE (Overall Equipment Effectiveness) Data Mart aggregation, stateful stream anomaly detection, and containerized operational BI dashboarding.
 
 ---
 
-## 🏗️ Architecture Overview
+## 1. 🏗️ Executive Summary & Architecture Overview
+
+The platform implements a **Hybrid / Lambda Architecture** tailored for high-throughput Industrial IoT (IIoT) and discrete manufacturing environments. It decouples high-velocity streaming ingestion from compute-heavy historical aggregations while delivering sub-second anomaly detection and near real-time operational visibility.
 
 ```
-+-------------------------------------------------------------------------------+
-|                             Data Ingestion Layer                              |
-|   simulator.py (Simulates IoT/PLC telemetry: cycle time, status, good/defect) |
-+---------------------------------------+---------------------------------------+
-                                        | (Stream Insert)
-                                        v
-+-------------------------------------------------------------------------------+
-|                       PostgreSQL 15 (Docker Container)                        |
-|                                                                               |
-|   [Raw Telemetry Table]              [Master Table]                           |
-|   machine_telemetry                  downtime_reasons                         |
-+-------------------+-------------------+---------------------------------------+
-                    |                                         |
-     (Real-time Poll/Stream)             +--------------------+--------------------+
-                    |                    |                                         |
-                    v                    v (Extract & Transform)                   v (Extract & Transform)
-+---------------------------------------+   +-----------------------------------+   +-----------------------------------+
-|  Stateful Stream Monitor & Detector   |   |       Automated Batch ETL         |   |        SQL Data Mart Engine       |
-|  stream_monitor.py                    |   |  batch_etl.py (Idempotent Upsert) |   |        populate_datamart.sql      |
-|  - Data Quality Gate                  |   +-----------------+-----------------+   +-----------------+-----------------+
-|  - Breakdown & Defect Streak Alerts   |                     |                                       |
-+---------------------------------------+                     +-------------------+-------------------+
-                                                                                  |
-                                                                                  v (Load / Upsert)
-+-------------------------------------------------------------------------------+
-|                             Data Mart & Analytics                             |
-|                                                                               |
-|   [Aggregated Data Mart]             [Audit Logging]                          |
-|   hourly_production_summary          pipeline_execution_logs                  |
-|   (OEE = Availability x Performance x Quality)                                |
-|                                                                               |
-|   Analytics & Reporting: run_analysis.py                                      |
-|   Orchestration & Scheduling: scheduler.py (1-minute intervals)               |
-+-------------------------------------------------------------------------------+
++-------------------------------------------------------------------------------------------------------+
+|                                         INGESTION LAYER                                               |
+|       simulator.py (Simulates PLC / Edge Telemetry: Status Codes, Cycle Times, Good/Defect Counts)    |
++---------------------------------------------------+---------------------------------------------------+
+                                                    | (Streaming Event Ingestion)
+                                                    v
++-------------------------------------------------------------------------------------------------------+
+|                                     STORAGE LAYER (PostgreSQL 15)                                     |
+|                                                                                                       |
+|       [Raw Telemetry Table]                                   [Master Reference Table]                |
+|       machine_telemetry (Partition/Index by TS & Line)        downtime_reasons (Status Categories)    |
++-------------------+---------------------------------------------------------------+-------------------+
+                    |                                                               |
+     (Real-Time Polling / Watermark)                                 (Scheduled Hourly Batch Window)
+                    |                                                               |
+                    v                                                               v
++---------------------------------------+                       +---------------------------------------+
+|              SPEED LAYER              |                       |              BATCH LAYER              |
+|   stream_monitor.py                   |                       |   batch_etl.py (Idempotent Upsert)    |
+|   - Physical Data Quality Gate        |                       |   scheduler.py (Periodic Automation)  |
+|   - Critical Breakdown Detection      |                       +-------------------+-------------------+
+|   - Stateful Consecutive Defect Spike |                                           | (Hourly Aggregation)
+|     Tracking (In-Memory Streak >= 2)  |                                           v
++---------------------------------------+                       +---------------------------------------+
+                    |                                           |               DATA MART               |
+                    |                                           |   hourly_production_summary           |
+                    |                                           |   (A, P, Q, OEE per Line/Machine)     |
+                    |                                           +-------------------+-------------------+
+                    |                                                               |
+                    +-------------------------------+-------------------------------+
+                                                    |
+                                                    v
++-------------------------------------------------------------------------------------------------------+
+|                                     SERVING & VISUALIZATION LAYER                                     |
+|   dashboard.py (Containerized Streamlit Multi-Service UI @ Port 8501)                                 |
+|   - Live Machine Health Cards (Dynamic Category Indicators & Good/Defect Deltas)                      |
+|   - Real-Time Telemetry Feed (Auto-refresh every 3 seconds via streamlit-autorefresh)                 |
+|   - Historic OEE Trend & Performance Analytics (Plotly Express)                                       |
++-------------------------------------------------------------------------------------------------------+
 ```
 
-* **Data Ingestion:** Event-driven telemetry stream simulator ([`simulator.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/simulator.py))
-* **Real-Time Stateful Stream Monitor:** Event listener with data quality gates, critical breakdown alerts, and consecutive quality spike detection ([`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py))
-* **Storage Layer:** PostgreSQL 15 deployed on Docker with volume persistence ([`docker-compose.yml`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/docker-compose.yml))
-* **Data Mart:** Aggregated hourly table calculating Availability, Performance, Quality, and OEE ([`create_datamart.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_datamart.sql))
-* **Automated Batch ETL:** Python-based idempotent Upsert pipeline with execution auditing ([`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py))
-* **Orchestration:** Periodic scheduler running automated batch cycles ([`scheduler.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/scheduler.py))
-* **Audit Logging:** Execution metadata, row counts, and status tracking ([`create_logs_table.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_logs_table.sql))
-* **Analytics Engine:** Multi-level terminal KPI report ([`run_analysis.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/run_analysis.py))
+### Component Responsibility Matrix
+* **Ingestion Layer:** Event-driven telemetry stream simulator ([`simulator.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/simulator.py)) emulating multi-machine PLC outputs.
+* **Storage Layer:** Relational ACID storage using PostgreSQL 15 with Docker persistent volume mapping ([`init_db.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/init_db.sql)).
+* **Speed Layer:** Stateful stream monitor ([`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py)) providing zero-lag anomaly escalation and data validation.
+* **Batch Layer:** Production ETL orchestrator ([`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py)) and lightweight scheduler ([`scheduler.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/scheduler.py)) aggregating raw signals into dimensional marts.
+* **Serving Layer:** Interactive BI Dashboard ([`dashboard.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/dashboard.py)) running in a dedicated Docker service ([`Dockerfile`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/Dockerfile)).
 
 ---
 
-## 📈 OEE Mathematical Model
+## 2. ⚙️ Tech Stack & Engineering Standards
 
-Overall Equipment Effectiveness (OEE) is calculated across three core pillars:
+### Core Technologies
+* **Runtime & Language:** Python 3.11+
+* **Analytics & Visualization:** Streamlit, Plotly Express, `streamlit-autorefresh`
+* **Database & ORM:** PostgreSQL 15, SQLAlchemy 2.0+, Psycopg2-binary
+* **Containerization & Orchestration:** Docker, Docker Compose (Multi-Service Architecture: `mfg_postgres`, `mfg_dashboard`)
+* **Task Scheduling:** Python `schedule` engine
 
-$$\text{OEE} = \text{Availability} \times \text{Performance} \times \text{Quality}$$
-
-| Pillar | Formula | Description |
-| :--- | :--- | :--- |
-| **Availability ($A$)** | $\frac{\text{Operating Time}}{\text{Operating Time} + \text{Unplanned Downtime}} \times 100$ | Percentage of planned production time the machine was actively running. |
-| **Performance ($P$)** | $\min\left(\frac{\text{Ideal Cycle Time} \times \text{Total Produced Units}}{\text{Operating Time}} \times 100,\, 100\right)$ | Operating speed efficiency relative to designed ideal cycle times. |
-| **Quality ($Q$)** | $\frac{\text{Total Good Units}}{\text{Total Produced Units}} \times 100$ | Ratio of defect-free products produced against total units. |
-| **Overall OEE** | $\frac{A \times P \times Q}{10000}$ | Holistic measure of manufacturing operational efficiency. |
-
-### Machine Ideal Cycle Times
-* **CNC_A:** 12.0 seconds/unit
-* **CNC_B:** 15.0 seconds/unit
-* **ROBOT_ARM:** 8.0 seconds/unit
-* **Default:** 10.0 seconds/unit
+### Enterprise Production Patterns
+1. **Idempotent Upsert Strategy:**
+   * Uses `INSERT INTO hourly_production_summary ... ON CONFLICT (hour_bucket, line_id, machine_id) DO UPDATE` to guarantee that batch pipeline re-runs are non-destructive, deterministic, and prevent duplicate KPI entries.
+2. **Stateful In-Memory Stream Processing:**
+   * Utilizes `collections.defaultdict(int)` keyed by `"{line_id}_{machine_id}"` for sub-millisecond streak tracking without incurring continuous database write overhead.
+3. **Data Quality Gates (DQG):**
+   * Drops and flags anomalous sensor signals (e.g. non-positive or `NULL` cycle times: $t \le 0$) prior to downstream KPI computation.
+4. **Execution Auditing & Observability:**
+   * Every batch run records execution metadata in [`pipeline_execution_logs`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_logs_table.sql) capturing start/end timestamps, duration, processed row counts, status (`SUCCESS` / `FAILED`), and full error tracebacks.
+5. **Graceful Shutdown & Resilience:**
+   * Handles OS signals and `KeyboardInterrupt` cleanly, ensuring active database connections, transactions, and cursor allocations are released.
 
 ---
 
-## 🗓️ Weekly Milestones & Core Capabilities
+## 3. 📐 Schema Design & Metric Definitions
 
-### Week 1: Data Mart & Full OEE Modeling
-- Established [`hourly_production_summary`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_datamart.sql) Data Mart table with unique constraint on `(hour_bucket, line_id, machine_id)`.
-- Implemented comprehensive SQL CTE aggregations in [`populate_datamart.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/populate_datamart.sql) computing Availability, Performance, Quality, and Overall OEE with `ON CONFLICT DO UPDATE` upsert logic.
-- Built [`run_analysis.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/run_analysis.py) for terminal OEE visualization and line-level benchmarking.
+### Database Schema Overview
+
+```
+ +-----------------------------------+          +-----------------------------------+
+ |         downtime_reasons          |          |         machine_telemetry         |
+ +-----------------------------------+          +-----------------------------------+
+ | PK  status_code      INT          |<----+    | PK  event_id        BIGSERIAL     |
+ |     status_name      VARCHAR(50)  |     +--- | FK  status_code     INT           |
+ |     category         VARCHAR(30)  |          |     line_id         VARCHAR(20)   |
+ +-----------------------------------+          |     machine_id      VARCHAR(20)   |
+                                                |     timestamp       TIMESTAMPTZ   |
+ +-----------------------------------+          |     cycle_time_sec  NUMERIC(6,2)  |
+ |     hourly_production_summary     |          |     good_units      INT           |
+ +-----------------------------------+          |     defect_units    INT           |
+ | PK  summary_id       SERIAL       |          +-----------------------------------+
+ | UK  hour_bucket      TIMESTAMP    |
+ | UK  line_id          VARCHAR(50)  |          +-----------------------------------+
+ | UK  machine_id       VARCHAR(50)  |          |      pipeline_execution_logs      |
+ |     total_cycles     INT          |          +-----------------------------------+
+ |     total_good_units INT          |          | PK  log_id          SERIAL        |
+ |     total_defect_u   INT          |          |     pipeline_name   VARCHAR(100)  |
+ |     operating_time_s NUMERIC(10,2)|          |     start_time      TIMESTAMP     |
+ |     unplanned_dt_s   NUMERIC(10,2)|          |     end_time        TIMESTAMP     |
+ |     availability_pct NUMERIC(5,2) |          |     status          VARCHAR(20)   |
+ |     performance_pct  NUMERIC(5,2) |          |     rows_processed  INT           |
+ |     quality_pct      NUMERIC(5,2) |          |     error_message   TEXT          |
+ |     oee_pct          NUMERIC(5,2) |          |     created_at      TIMESTAMP     |
+ +-----------------------------------+          +-----------------------------------+
+```
+
+### Table Specifications
+
+#### 1. `machine_telemetry` (Raw Ingestion Layer)
+* Stores high-frequency raw telemetry events from line PLCs.
+* Indexed by `(timestamp)` and `(line_id, machine_id)` for high-throughput temporal scanning.
+
+#### 2. `downtime_reasons` (Master Reference Dimension)
+* Categorizes status codes into `Production`, `Planned Maintenance`, `Unplanned Downtime`, and `Idle`.
+
+#### 3. `hourly_production_summary` (Aggregated Data Mart)
+* Stores calculated 3-pillar OEE metrics aggregated per hour window.
+* Enforces `UNIQUE(hour_bucket, line_id, machine_id)` for idempotent upserts.
+
+#### 4. `pipeline_execution_logs` (Audit Trail)
+* Maintains pipeline observability, audit logs, affected row metrics, and error stack traces.
+
+---
+
+### 📊 OEE Mathematical Model
+
+Overall Equipment Effectiveness (OEE) evaluates manufacturing productivity through three distinct dimensions:
+
+$$OEE = \text{Availability} \times \text{Performance} \times \text{Quality}$$
+
+$$\text{OEE (\%)} = \frac{\text{Availability (\%)} \times \text{Performance (\%)} \times \text{Quality (\%)}}{10000}$$
+
+| OEE Pillar | Mathematical Definition | SQL Operational Formula | Description |
+| :--- | :--- | :--- | :--- |
+| **Availability ($A$)** | $\frac{\text{Run Time}}{\text{Planned Production Time}} \times 100$ | $\frac{\text{Operating Time}}{\text{Operating Time} + \text{Unplanned Downtime}} \times 100$ | Measures proportion of planned operating time without machine breakdown. |
+| **Performance ($P$)** | $\frac{\text{Ideal Operating Time}}{\text{Actual Operating Time}} \times 100$ | $\min\left(\frac{\text{Ideal Cycle Time} \times \text{Total Produced Units}}{\text{Operating Time}} \times 100,\, 100\right)$ | Measures production speed efficiency against designed ideal cycle speed. |
+| **Quality ($Q$)** | $\frac{\text{Good Units}}{\text{Total Units Produced}} \times 100$ | $\frac{\text{Total Good Units}}{\text{Total Good Units} + \text{Total Defect Units}} \times 100$ | Measures first-pass manufacturing yield and defect-free output. |
+
+#### Machine Ideal Cycle Times (Engineered Standards)
+* **`CNC_A`:** $12.0\text{ seconds/unit}$
+* **`CNC_B`:** $15.0\text{ seconds/unit}$
+* **`ROBOT_ARM`:** $8.0\text{ seconds/unit}$
+* **Standard Baseline:** $10.0\text{ seconds/unit}$
+
+---
+
+## 🗓️ Key Milestones Completed (Weeks 1 - 4)
+
+### Week 1: Data Modeling & Synthetic PLC Telemetry Simulation
+* Designed schema architecture across raw telemetry and downtime master tables.
+* Deployed containerized PostgreSQL 15 environment with volume persistence.
+* Built synthetic PLC stream generator ([`simulator.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/simulator.py)) emulating realistic machine states (80% normal production, 20% breakdown/idle/tool change).
+* Authored core SQL OEE aggregation CTEs ([`populate_datamart.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/populate_datamart.sql)).
 
 ### Week 2: Automated Batch ETL & Orchestration
-- Developed [`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py) using SQLAlchemy to extract raw telemetry, calculate OEE metrics, and perform idempotent upserts into the Data Mart.
-- Created [`pipeline_execution_logs`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_logs_table.sql) table to maintain execution audits, tracking start/end times, durations, processed row counts, status (`SUCCESS` / `FAILED`), and error tracebacks.
-- Deployed periodic execution loop via [`scheduler.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/scheduler.py) using the Python `schedule` library to automate recurring batch cycles.
+* Implemented production-grade Python ETL pipeline ([`batch_etl.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/batch_etl.py)) using SQLAlchemy 2.0.
+* Integrated idempotent `ON CONFLICT DO UPDATE` upsert logic to support non-blocking pipeline re-runs.
+* Built automated execution logging table ([`create_logs_table.sql`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/create_logs_table.sql)) for end-to-end auditability.
+* Configured automated periodic batch execution scheduler ([`scheduler.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/scheduler.py)).
 
 ### Week 3: Stateful Real-Time Stream Monitoring & Anomaly Detection
-- Built [`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py) for real-time stateful stream analytics and edge anomaly detection:
-  - **Data Quality Gate:** Rejects corrupted telemetry (e.g. invalid or non-positive cycle times).
-  - **Critical Breakdown Alerts:** Real-time flagging of Unplanned Downtime incidents with color-coded ANSI logging.
-  - **Stateful In-Memory Quality Spike Alerts:** Uses in-memory state tracking (`defaultdict`) per machine (`line_id + machine_id`) to detect consecutive defect spikes ($\ge 2$ consecutive defect events) and automatically resets upon recovering normal production.
+* Developed real-time stream monitor ([`stream_monitor.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/stream_monitor.py)) using watermark-based incremental polling (`MAX(event_id)`).
+* Implemented **Data Quality Gate** to intercept invalid or poisoned cycle times ($t \le 0$).
+* Engineered stateful in-memory quality tracking with `defaultdict` to detect **Consecutive Defect Spikes** ($\ge 2$ consecutive defect events) with automatic recovery reset.
+* Configured real-time color-coded ANSI incident severity alerting (Critical Breakdown vs. Defect Spike vs. Healthy).
+
+### Week 4: Multi-Container Dockerization & Real-Time BI Dashboard
+* Containerized Python application layer with multi-stage [`Dockerfile`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/Dockerfile).
+* Configured multi-service orchestration via [`docker-compose.yml`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/docker-compose.yml) connecting `mfg_postgres` and `mfg_dashboard` across an isolated Docker network.
+* Built interactive real-time manufacturing dashboard ([`dashboard.py`](file:///c:/Users/Acer/Downloads/All%20Project/mfg-data-pipeline/dashboard.py)) featuring:
+  - Dynamic KPI status cards with delta metrics and health status colors.
+  - 3-second live auto-refresh feed powered by `streamlit-autorefresh`.
+  - Historical OEE trend visualization across machines using Plotly Express.
 
 ---
 
-## 💻 Complete Command Guide
+## 🚀 Quick Start & Deployment Guide (Zero to Running)
 
-### 1. Project Setup & Dependencies
+### 1. Multi-Container Deployment via Docker Compose
+
+Clone repository and spin up all platform services in detached mode:
+
 ```powershell
-# Create Virtual Environment
-python -m venv .venv
+# Build and start all containers (PostgreSQL & Streamlit Dashboard)
+docker compose up --build -d
 
-# Activate Virtual Environment (PowerShell)
+# Verify container health and networking status
+docker compose ps
+```
+
+* 🌐 **Real-Time Streamlit Dashboard:** Open browser at [http://localhost:8501](http://localhost:8501)
+* 🗄️ **PostgreSQL Port:** Exposed on `localhost:5432` (User: `mfg_user`, Database: `manufacturing_db`)
+
+---
+
+### 2. Local Environment Setup & Database Initialization
+
+If running ingestion or monitoring scripts locally outside Docker:
+
+```powershell
+# 1. Create and activate Python Virtual Environment
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# Install Required Libraries
-.\.venv\Scripts\pip install psycopg2-binary pandas sqlalchemy schedule
+# 2. Install all platform dependencies
+pip install -r requirements.txt
 ```
 
----
-
-### 2. Infrastructure Deployment (PostgreSQL via Docker)
+#### Schema Initialization (First-Time Setup):
 ```powershell
-# Start PostgreSQL container in background
-docker compose up -d
-
-# Verify container is running and healthy
-docker ps --filter "name=mfg_postgres"
-```
-
----
-
-### 3. Database Schema Setup
-Initialize master tables, telemetry storage, Data Mart table, and audit log table:
-```powershell
-# Initialize Base Schema & Master Data (executed automatically on first compose up, or run manually):
+# 1. Initialize Base Schema & Master Tables
 Get-Content init_db.sql | docker exec -i mfg_postgres psql -U mfg_user -d manufacturing_db
 
-# Create Data Mart Table & Indexes
+# 2. Initialize Data Mart Table & Indexes
 Get-Content create_datamart.sql | docker exec -i mfg_postgres psql -U mfg_user -d manufacturing_db
 
-# Create Pipeline Execution Logs Table
+# 3. Initialize Pipeline Audit Logs Table
 Get-Content create_logs_table.sql | docker exec -i mfg_postgres psql -U mfg_user -d manufacturing_db
 ```
 
 ---
 
-### 4. Running the Pipeline Components
+### 3. Running Data Platform Workflows
 
-#### Terminal 1: Ingestion Simulator
-Start continuous telemetry streaming (generates events every 2 seconds):
+#### Step A: Start Real-Time Ingestion Simulator
+Start streaming synthetic PLC telemetry events (Terminal 1):
 ```powershell
 .\.venv\Scripts\python simulator.py
 ```
-*(Press `Ctrl+C` to stop)*
+*(Generates events every 2 seconds; press `Ctrl+C` to stop)*
 
-#### Terminal 2: Real-Time Stateful Stream Monitor & Anomaly Detector
-Monitor incoming events in real time with state tracking, quality gates, and streak alerts:
+#### Step B: Start Stateful Stream Monitor & Anomaly Detector
+Monitor live events and trigger real-time quality/breakdown alerts (Terminal 2):
 ```powershell
 .\.venv\Scripts\python stream_monitor.py
 ```
-*(Press `Ctrl+C` to stop)*
 
-#### Terminal 3: Automated Batch ETL Scheduler
-Automate recurring 1-minute aggregation cycles with audit logging:
+#### Step C: Run Automated Batch ETL Scheduler
+Automate recurring 1-minute OEE Data Mart calculations and audit logging (Terminal 3):
 ```powershell
 .\.venv\Scripts\python scheduler.py
 ```
 
-#### Terminal 4 (Ad-hoc): Manual Batch ETL & KPI Reports
+#### Step D: Ad-Hoc Batch Execution & CLI KPI Reporting
 ```powershell
-# Manually trigger one-time Batch ETL upsert
+# Run a single manual Batch ETL cycle
 .\.venv\Scripts\python batch_etl.py
 
-# Print multi-level OEE & Line benchmark report
+# Print multi-level terminal OEE analytics report
 .\.venv\Scripts\python run_analysis.py
 ```
 
 ---
 
-### 5. Direct Database Inspection & Auditing
+### 4. Direct Database Inspection & Observability
 
-Connect to PostgreSQL CLI inside Docker:
+Access the PostgreSQL database CLI inside Docker:
 ```powershell
 docker exec -it mfg_postgres psql -U mfg_user -d manufacturing_db
 ```
 
-#### Useful SQL Audit Queries:
-
 ```sql
--- Check Data Mart OEE Summary records
+-- 1. Inspect Data Mart OEE aggregations
 SELECT hour_bucket, line_id, machine_id, total_produced_units, availability_pct, performance_pct, quality_pct, oee_pct 
 FROM hourly_production_summary 
 ORDER BY hour_bucket DESC, line_id, machine_id;
 
--- Inspect Batch Pipeline Execution Audit Logs
+-- 2. Check Pipeline Execution Audit Logs
 SELECT log_id, pipeline_name, start_time, end_time, status, rows_processed, error_message 
 FROM pipeline_execution_logs 
 ORDER BY log_id DESC 
 LIMIT 10;
 
--- Check Raw Telemetry Volume
-SELECT line_id, machine_id, COUNT(*) AS event_count, SUM(good_units) AS total_good, SUM(defect_units) AS total_defect 
+-- 3. Check Live Machine Telemetry Event Counts
+SELECT line_id, machine_id, COUNT(*) AS event_count, SUM(good_units) AS good, SUM(defect_units) AS defect 
 FROM machine_telemetry 
 GROUP BY line_id, machine_id;
 ```
 
 ---
 
-### 6. Teardown & Maintenance
+### 5. Service Teardown & Maintenance
+
 ```powershell
-# Stop PostgreSQL container (data is preserved in docker volume)
+# Stop all services (preserves database volume data)
 docker compose stop
 
-# Destroy container and networks
+# Stop and remove containers and network
 docker compose down
 
-# Destroy container and wipe data volumes (Clean reset)
+# Full reset: Wipe containers, network, and persistent storage volumes
 docker compose down -v
-```
-
----
-
-## 🗄️ Database Schema Reference
-
-### `machine_telemetry` (Raw Stream Events)
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `event_id` | `BIGSERIAL PRIMARY KEY` | Auto-incrementing unique event identifier |
-| `line_id` | `VARCHAR(20)` | Production line identifier (`LINE_01`, `LINE_02`) |
-| `machine_id` | `VARCHAR(20)` | Industrial machine identifier (`CNC_A`, `CNC_B`, `ROBOT_ARM`) |
-| `timestamp` | `TIMESTAMPTZ` | Timestamp when event occurred |
-| `cycle_time_sec` | `NUMERIC(6,2)` | Machine cycle duration in seconds |
-| `good_units` | `INT` | Count of quality-approved units |
-| `defect_units` | `INT` | Count of rejected / defect units |
-| `status_code` | `INT REFERENCES downtime_reasons` | Current machine status code |
-
-### `hourly_production_summary` (Aggregated Data Mart)
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `summary_id` | `SERIAL PRIMARY KEY` | Unique record ID |
-| `hour_bucket` | `TIMESTAMP` | Truncated hourly time window |
-| `line_id` | `VARCHAR(50)` | Production line identifier |
-| `machine_id` | `VARCHAR(50)` | Machine identifier |
-| `total_cycles` | `INT` | Total event count in the hour |
-| `total_good_units` | `INT` | Total defect-free units produced |
-| `total_defect_units` | `INT` | Total defective units produced |
-| `total_produced_units` | `INT` | Total production output (`good + defect`) |
-| `operating_time_sec` | `NUMERIC(10,2)` | Time spent in normal production (`status_code = 1`) |
-| `unplanned_downtime_sec` | `NUMERIC(10,2)` | Time lost to unplanned breakdowns |
-| `planned_downtime_sec` | `NUMERIC(10,2)` | Time allocated for maintenance / tool change |
-| `idle_time_sec` | `NUMERIC(10,2)` | Time spent idle (no material) |
-| `availability_pct` | `NUMERIC(5,2)` | Machine availability percentage |
-| `performance_pct` | `NUMERIC(5,2)` | Machine speed efficiency percentage |
-| `quality_pct` | `NUMERIC(5,2)` | Production yield quality percentage |
-| `oee_pct` | `NUMERIC(5,2)` | Overall Equipment Effectiveness percentage |
-| `created_at` | `TIMESTAMP` | Timestamp of last upsert |
-
-### `pipeline_execution_logs` (ETL Audit Log)
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `log_id` | `SERIAL PRIMARY KEY` | Auto-incrementing audit log identifier |
-| `pipeline_name` | `VARCHAR(100)` | Name of the executing ETL pipeline |
-| `start_time` | `TIMESTAMP` | Batch execution start timestamp |
-| `end_time` | `TIMESTAMP` | Batch execution end timestamp |
-| `status` | `VARCHAR(20)` | Run status (`SUCCESS` or `FAILED`) |
-| `rows_processed` | `INT` | Number of rows affected / upserted |
-| `error_message` | `TEXT` | Traceback or error details if failed |
-| `created_at` | `TIMESTAMP` | Log record timestamp |
+```

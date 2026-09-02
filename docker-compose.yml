@@ -1,18 +1,28 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: mfg_postgres
+    restart: always
     environment:
-      POSTGRES_DB: manufacturing_db
       POSTGRES_USER: mfg_user
       POSTGRES_PASSWORD: mfg_password
+      POSTGRES_DB: manufacturing_db
     ports:
       - "5432:5432"
     volumes:
-      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
       - pgdata:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+
+  dashboard:
+    build: .
+    container_name: mfg_dashboard
+    restart: always
+    environment:
+      DB_URI: "postgresql+psycopg2://mfg_user:mfg_password@postgres:5432/manufacturing_db"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
 
 volumes:
   pgdata:
